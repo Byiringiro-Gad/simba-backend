@@ -59,9 +59,19 @@ export async function migrate() {
       `ALTER TABLE orders ADD COLUMN pickup_slot VARCHAR(20) NOT NULL DEFAULT 'asap'`,
       `ALTER TABLE orders ADD COLUMN deposit_amount INT NOT NULL DEFAULT 0`,
       `ALTER TABLE orders ADD COLUMN fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'pickup'`,
+      `ALTER TABLE orders ADD COLUMN user_id VARCHAR(36) DEFAULT NULL`,
     ];
     for (const sql of alterCols) {
       try { await conn.execute(sql); } catch { /* column already exists — safe to ignore */ }
+    }
+
+    // Rename old delivery columns to pickup columns if they still exist
+    const renameCols = [
+      `ALTER TABLE orders CHANGE COLUMN delivery_address pickup_branch VARCHAR(255) NOT NULL DEFAULT ''`,
+      `ALTER TABLE orders CHANGE COLUMN delivery_slot pickup_slot VARCHAR(20) NOT NULL DEFAULT 'asap'`,
+    ];
+    for (const sql of renameCols) {
+      try { await conn.execute(sql); } catch { /* column doesn't exist or already renamed — safe to ignore */ }
     }
 
     // Order items table
