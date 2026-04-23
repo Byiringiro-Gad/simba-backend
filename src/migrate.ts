@@ -37,19 +37,32 @@ export async function migrate() {
         user_id          VARCHAR(36)  DEFAULT NULL,
         customer_name    VARCHAR(100) NOT NULL DEFAULT '',
         customer_phone   VARCHAR(20)  NOT NULL DEFAULT '',
-        delivery_address VARCHAR(500) NOT NULL DEFAULT '',
-        delivery_slot    VARCHAR(20)  NOT NULL DEFAULT 'asap',
+        pickup_branch    VARCHAR(255) NOT NULL DEFAULT '',
+        pickup_slot      VARCHAR(20)  NOT NULL DEFAULT 'asap',
         payment_method   VARCHAR(10)  NOT NULL DEFAULT 'mtn',
         subtotal         INT          NOT NULL DEFAULT 0,
-        delivery_fee     INT          NOT NULL DEFAULT 1000,
+        delivery_fee     INT          NOT NULL DEFAULT 0,
         discount         INT          NOT NULL DEFAULT 0,
+        deposit_amount   INT          NOT NULL DEFAULT 0,
         total            INT          NOT NULL,
         promo_code       VARCHAR(20)  DEFAULT NULL,
+        fulfillment_type VARCHAR(20)  NOT NULL DEFAULT 'pickup',
         status           ENUM('processing','delivered','cancelled') NOT NULL DEFAULT 'processing',
         created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+
+    // Add missing columns to existing orders table (safe — ignores if already exists)
+    const alterCols = [
+      `ALTER TABLE orders ADD COLUMN pickup_branch VARCHAR(255) NOT NULL DEFAULT ''`,
+      `ALTER TABLE orders ADD COLUMN pickup_slot VARCHAR(20) NOT NULL DEFAULT 'asap'`,
+      `ALTER TABLE orders ADD COLUMN deposit_amount INT NOT NULL DEFAULT 0`,
+      `ALTER TABLE orders ADD COLUMN fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'pickup'`,
+    ];
+    for (const sql of alterCols) {
+      try { await conn.execute(sql); } catch { /* column already exists — safe to ignore */ }
+    }
 
     // Order items table
     await conn.execute(`
