@@ -1,4 +1,4 @@
-import { getPool } from './db';
+import { getPool, query } from './db';
 
 export async function migrate() {
   const conn = await getPool().getConnection();
