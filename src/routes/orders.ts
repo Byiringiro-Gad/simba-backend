@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query, getPool } from '../db';
 import { sendOrderConfirmation } from '../email';
+import { decreaseStock } from './inventory';
 
 const router = Router();
 
@@ -77,6 +78,16 @@ router.post('/', async (req: Request, res: Response) => {
         'UPDATE users SET loyalty_points = loyalty_points + ? WHERE id = ?',
         [points, userId]
       );
+    }
+
+    // Decrease per-branch inventory (non-blocking)
+    if (pickupBranch) {
+      // Derive branchId from branch name (e.g. "Simba Supermarket Remera" → "remera")
+      const branchId = pickupBranch
+        .toLowerCase()
+        .replace('simba supermarket ', '')
+        .replace(/\s+/g, '_');
+      decreaseStock(branchId, items.map((i: any) => ({ id: i.id, quantity: i.quantity }))).catch(() => {});
     }
 
     // Send confirmation email (non-blocking)

@@ -60,6 +60,9 @@ export async function migrate() {
       `ALTER TABLE orders ADD COLUMN deposit_amount INT NOT NULL DEFAULT 0`,
       `ALTER TABLE orders ADD COLUMN fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'pickup'`,
       `ALTER TABLE orders ADD COLUMN user_id VARCHAR(36) DEFAULT NULL`,
+      `ALTER TABLE orders ADD COLUMN assigned_to VARCHAR(36) DEFAULT NULL`,
+      `ALTER TABLE orders ADD COLUMN assigned_name VARCHAR(100) DEFAULT NULL`,
+      `ALTER TABLE orders ADD COLUMN branch_status ENUM('pending','preparing','ready','picked_up') NOT NULL DEFAULT 'pending'`,
     ];
     for (const sql of alterCols) {
       try { await conn.execute(sql); } catch { /* column already exists — safe to ignore */ }
@@ -72,6 +75,53 @@ export async function migrate() {
     ];
     for (const sql of renameCols) {
       try { await conn.execute(sql); } catch { /* column doesn't exist or already renamed — safe to ignore */ }
+    }
+
+    // Branch staff table
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS branch_staff (
+        id           VARCHAR(36)  PRIMARY KEY,
+        name         VARCHAR(100) NOT NULL,
+        username     VARCHAR(50)  NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        branch_id    VARCHAR(50)  NOT NULL,
+        branch_name  VARCHAR(255) NOT NULL,
+        role         ENUM('manager','staff') NOT NULL DEFAULT 'staff',
+        created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    // Seed default branch staff if table is empty
+    const existing = await query<any>('SELECT COUNT(*) AS cnt FROM branch_staff');
+    if (existing[0]?.cnt === 0) {
+      const bcrypt = await import('bcryptjs');
+      const managerHash = await bcrypt.hash('manager123', 10);
+      const staffHash   = await bcrypt.hash('staff123', 10);
+      const { v4: uuidv4 } = await import('uuid');
+
+      const branches = [
+        { id: 'remera',     name: 'Simba Supermarket Remera' },
+        { id: 'kimironko',  name: 'Simba Supermarket Kimironko' },
+        { id: 'kacyiru',    name: 'Simba Supermarket Kacyiru' },
+        { id: 'nyamirambo', name: 'Simba Supermarket Nyamirambo' },
+        { id: 'gikondo',    name: 'Simba Supermarket Gikondo' },
+        { id: 'kanombe',    name: 'Simba Supermarket Kanombe' },
+        { id: 'kinyinya',   name: 'Simba Supermarket Kinyinya' },
+        { id: 'kibagabaga', name: 'Simba Supermarket Kibagabaga' },
+        { id: 'nyanza',     name: 'Simba Supermarket Nyanza' },
+      ];
+
+      for (const b of branches) {
+        await conn.execute(
+          `INSERT IGNORE INTO branch_staff (id, name, username, password_hash, branch_id, branch_name, role) VALUES (?,?,?,?,?,?,?)`,
+          [uuidv4(), `Manager ${b.name}`, `manager_${b.id}`, managerHash, b.id, b.name, 'manager']
+        );
+        await conn.execute(
+          `INSERT IGNORE INTO branch_staff (id, name, username, password_hash, branch_id, branch_name, role) VALUES (?,?,?,?,?,?,?)`,
+          [uuidv4(), `Staff ${b.name}`, `staff_${b.id}`, staffHash, b.id, b.name, 'staff']
+        );
+      }
+      console.log('[DB] Branch staff seeded');
     }
 
     // Order items table
@@ -91,6 +141,41 @@ export async function migrate() {
     `);
 
     console.log('[DB] Migration complete');
+
+    // Branch inventory table
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS branch_inventory (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        branch_id    VARCHAR(50)  NOT NULL,
+        product_id   INT          NOT NULL,
+        stock_count  INT          NOT NULL DEFAULT 50,
+        is_available TINYINT(1)   NOT NULL DEFAULT 1,
+        updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_branch_product (branch_id, product_id),
+        INDEX idx_branch (branch_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    console.log('[DB] Inventory table ready');
+
+    // Branch reviews table
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS branch_reviews (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        branch_id    VARCHAR(50)  NOT NULL,
+        branch_name  VARCHAR(255) NOT NULL,
+        user_id      VARCHAR(36)  DEFAULT NULL,
+        user_name    VARCHAR(100) NOT NULL DEFAULT 'Anonymous',
+        order_id     VARCHAR(20)  NOT NULL,
+        rating       TINYINT      NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment      TEXT         DEFAULT NULL,
+        created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_branch_reviews_branch (branch_id),
+        UNIQUE KEY uq_order_review (order_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    console.log('[DB] Branch reviews table ready');
   } finally {
     conn.release();
   }

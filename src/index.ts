@@ -5,6 +5,9 @@ import { migrate } from './migrate';
 import authRoutes from './routes/auth';
 import ordersRoutes from './routes/orders';
 import adminRoutes from './routes/admin';
+import branchRoutes from './routes/branch';
+import inventoryRoutes from './routes/inventory';
+import reviewsRoutes from './routes/reviews';
 
 dotenv.config();
 
@@ -34,6 +37,9 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/auth', authRoutes);
 app.use('/orders', ordersRoutes);
 app.use('/admin', adminRoutes);
+app.use('/branch', branchRoutes);
+app.use('/inventory', inventoryRoutes);
+app.use('/reviews', reviewsRoutes);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function start() {
