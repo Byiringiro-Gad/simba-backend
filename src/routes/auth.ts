@@ -2,12 +2,33 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { query } from '../db';
+import { sendPasswordResetEmail } from '../email';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET ?? 'simba_secret';
 
-// POST /auth/register
+function buildResetLink(token: string) {
+  const frontendUrl = process.env.FRONTEND_URL ?? 'https://simba-2-ebon.vercel.app';
+  return `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+async function ensureResetSchema() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      user_id     VARCHAR(36)  NOT NULL,
+      token       VARCHAR(255) NOT NULL UNIQUE,
+      expires_at  DATETIME     NOT NULL,
+      used_at     DATETIME     DEFAULT NULL,
+      created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_password_reset_user_id (user_id),
+      INDEX idx_password_reset_token (token)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+}
+
 router.post('/register', async (req: Request, res: Response) => {
   try {
     const { name, email, phone, password, referralCode } = req.body;
@@ -16,8 +37,7 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ ok: false, error: 'Name, email and password are required' });
     }
 
-    // Check existing
-    const existing = await query('SELECT id FROM users WHERE email = ?', [email.toLowerCase()]);
+    const existing = await query('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
     if (existing.length > 0) {
       return res.status(409).json({ ok: false, error: 'Email already registered' });
     }
@@ -32,7 +52,6 @@ router.post('/register', async (req: Request, res: Response) => {
       [id, name.trim(), email.toLowerCase().trim(), phone ?? null, hash, code]
     );
 
-    // Apply referral bonus if valid code provided
     if (referralCode) {
       await query(
         `UPDATE users SET loyalty_points = loyalty_points + 50
@@ -48,7 +67,6 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-// POST /auth/login
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -97,7 +115,86 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// GET /auth/me — get current user from token
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const email = String(req.body?.email ?? '').toLowerCase().trim();
+    if (!email) {
+      return res.status(400).json({ ok: false, error: 'Email is required' });
+    }
+
+    await ensureResetSchema();
+
+    const users = await query<any>('SELECT id, name, email FROM users WHERE email = ?', [email]);
+    if (users.length === 0) {
+      return res.json({ ok: true, message: 'If that email exists, a reset link has been prepared.' });
+    }
+
+    const user = users[0];
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [user.id]);
+    await query(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES (?, ?, ?)`,
+      [user.id, token, expiresAt]
+    );
+
+    const resetLink = buildResetLink(token);
+    const emailSent = await sendPasswordResetEmail({
+      customerName: user.name,
+      email: user.email,
+      resetLink,
+    });
+
+    return res.json({
+      ok: true,
+      message: emailSent
+        ? 'Reset link sent. Check your inbox.'
+        : 'Reset link generated. Use the link below.',
+      resetLink: emailSent ? undefined : resetLink,
+    });
+  } catch (err: any) {
+    console.error('[POST /auth/forgot-password]', err.message);
+    return res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const token = String(req.body?.token ?? '').trim();
+    const password = String(req.body?.password ?? '');
+
+    if (!token || !password || password.length < 6) {
+      return res.status(400).json({ ok: false, error: 'Valid token and password are required' });
+    }
+
+    await ensureResetSchema();
+
+    const rows = await query<any>(
+      `SELECT * FROM password_reset_tokens
+       WHERE token = ? AND used_at IS NULL AND expires_at > NOW()
+       ORDER BY id DESC LIMIT 1`,
+      [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ ok: false, error: 'Reset link is invalid or expired' });
+    }
+
+    const resetToken = rows[0];
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, resetToken.user_id]);
+    await query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ?', [resetToken.id]);
+
+    return res.json({ ok: true, message: 'Password reset successful. You can sign in now.' });
+  } catch (err: any) {
+    console.error('[POST /auth/reset-password]', err.message);
+    return res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
 router.get('/me', async (req: Request, res: Response) => {
   try {
     const auth = req.headers.authorization;
@@ -131,3 +228,4 @@ router.get('/me', async (req: Request, res: Response) => {
 });
 
 export default router;
+
