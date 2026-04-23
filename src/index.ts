@@ -14,7 +14,7 @@ const PORT = Number(process.env.PORT ?? 4000);
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: [
-    process.env.FRONTEND_URL ?? 'https://simba-2-ebon.vercel.app',
+    process.env.FRONTEND_URL ?? 'https://simba2gad.vercel.app',
     'http://localhost:3000',
   ],
   credentials: true,

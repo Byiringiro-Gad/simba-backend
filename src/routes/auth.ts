@@ -10,7 +10,7 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET ?? 'simba_secret';
 
 function buildResetLink(token: string) {
-  const frontendUrl = process.env.FRONTEND_URL ?? 'https://simba-2-ebon.vercel.app';
+  const frontendUrl = process.env.FRONTEND_URL ?? 'https://simba2gad.vercel.app';
   return `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
 }
 

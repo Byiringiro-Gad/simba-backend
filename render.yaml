@@ -24,6 +24,6 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: FRONTEND_URL
-        value: https://simba-2-ebon.vercel.app
+        value: https://simba2gad.vercel.app
       - key: PORT
         value: "4000"
