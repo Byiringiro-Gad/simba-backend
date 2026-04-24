@@ -82,11 +82,19 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Decrease per-branch inventory (non-blocking)
     if (pickupBranch) {
-      // Derive branchId from branch name (e.g. "Simba Supermarket Remera" → "remera")
-      const branchId = pickupBranch
-        .toLowerCase()
-        .replace('simba supermarket ', '')
-        .replace(/\s+/g, '_');
+      // Use a reliable map instead of fragile string manipulation
+      const BRANCH_NAME_TO_ID: Record<string, string> = {
+        'simba supermarket remera':     'remera',
+        'simba supermarket kimironko':  'kimironko',
+        'simba supermarket kacyiru':    'kacyiru',
+        'simba supermarket nyamirambo': 'nyamirambo',
+        'simba supermarket gikondo':    'gikondo',
+        'simba supermarket kanombe':    'kanombe',
+        'simba supermarket kinyinya':   'kinyinya',
+        'simba supermarket kibagabaga': 'kibagabaga',
+        'simba supermarket nyanza':     'nyanza',
+      };
+      const branchId = BRANCH_NAME_TO_ID[pickupBranch.toLowerCase()] ?? pickupBranch.toLowerCase().replace(/\s+/g, '_');
       decreaseStock(branchId, items.map((i: any) => ({ id: i.id, quantity: i.quantity }))).catch(() => {});
     }
 

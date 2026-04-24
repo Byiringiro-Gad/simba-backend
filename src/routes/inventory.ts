@@ -20,19 +20,45 @@ function branchAuth(req: Request, res: Response, next: Function) {
 }
 
 // GET /inventory/:branchId — get all inventory for a branch
-// Public — frontend uses this to show per-branch stock
 router.get('/:branchId', async (req: Request, res: Response) => {
   try {
     const { branchId } = req.params;
 
-    const rows = await query<any>(
+    let rows = await query<any>(
       `SELECT product_id, stock_count, is_available
        FROM branch_inventory
        WHERE branch_id = ?`,
       [branchId]
     );
 
-    // Return as a map: { productId: { stockCount, isAvailable } }
+    // Auto-seed if this branch has no inventory yet
+    if (rows.length === 0) {
+      // Get all product IDs from order_items to seed (use a fixed set of common IDs)
+      // Seed with deterministic stock for all known product IDs
+      try {
+        const products = await query<any>('SELECT DISTINCT product_id FROM order_items LIMIT 500');
+        if (products.length > 0) {
+          const conn = await getPool().getConnection();
+          try {
+            for (const p of products) {
+              const stock = 10 + (p.product_id % 50);
+              await conn.execute(
+                `INSERT IGNORE INTO branch_inventory (branch_id, product_id, stock_count, is_available) VALUES (?, ?, ?, 1)`,
+                [branchId, p.product_id, stock]
+              );
+            }
+          } finally {
+            conn.release();
+          }
+          // Re-fetch after seeding
+          rows = await query<any>(
+            `SELECT product_id, stock_count, is_available FROM branch_inventory WHERE branch_id = ?`,
+            [branchId]
+          );
+        }
+      } catch { /* silent — return empty inventory */ }
+    }
+
     const inventory: Record<number, { stockCount: number; isAvailable: boolean }> = {};
     for (const row of rows) {
       inventory[row.product_id] = {
