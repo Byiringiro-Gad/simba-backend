@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // HTTP fetch transport — no WebSocket needed on Render/Node.js
-neonConfig.fetchConnectionCache = true;
+// fetchConnectionCache is now always true in newer versions, no need to set it
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 if (!DATABASE_URL) {
