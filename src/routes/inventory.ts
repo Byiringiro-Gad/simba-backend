@@ -43,7 +43,8 @@ router.get('/:branchId', async (req: Request, res: Response) => {
             for (const p of products) {
               const stock = 10 + (p.product_id % 50);
               await conn.execute(
-                `INSERT IGNORE INTO branch_inventory (branch_id, product_id, stock_count, is_available) VALUES (?, ?, ?, 1)`,
+                `INSERT INTO branch_inventory (branch_id, product_id, stock_count, is_available)
+                 VALUES (?, ?, ?, true) ON CONFLICT (branch_id, product_id) DO NOTHING`,
                 [branchId, p.product_id, stock]
               );
             }
@@ -84,11 +85,11 @@ router.patch('/:branchId/:productId', branchAuth, async (req: Request, res: Resp
     await query(
       `INSERT INTO branch_inventory (branch_id, product_id, stock_count, is_available)
        VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         stock_count  = VALUES(stock_count),
-         is_available = VALUES(is_available),
+       ON CONFLICT (branch_id, product_id) DO UPDATE SET
+         stock_count  = EXCLUDED.stock_count,
+         is_available = EXCLUDED.is_available,
          updated_at   = NOW()`,
-      [branchId, Number(productId), stockCount ?? 0, isAvailable ? 1 : 0]
+      [branchId, Number(productId), stockCount ?? 0, isAvailable ? true : false]
     );
 
     return res.json({ ok: true });
@@ -115,8 +116,8 @@ router.post('/:branchId/seed', async (req: Request, res: Response) => {
         // Deterministic stock: 10-60 based on product ID
         const stock = 10 + (pid % 50);
         await conn.execute(
-          `INSERT IGNORE INTO branch_inventory (branch_id, product_id, stock_count, is_available)
-           VALUES (?, ?, ?, 1)`,
+          `INSERT INTO branch_inventory (branch_id, product_id, stock_count, is_available)
+           VALUES (?, ?, ?, true) ON CONFLICT (branch_id, product_id) DO NOTHING`,
           [branchId, pid, stock]
         );
       }
@@ -138,7 +139,7 @@ export async function decreaseStock(branchId: string, items: Array<{ id: number;
       await query(
         `UPDATE branch_inventory
          SET stock_count = GREATEST(0, stock_count - ?),
-             is_available = CASE WHEN stock_count - ? <= 0 THEN 0 ELSE is_available END,
+             is_available = CASE WHEN (stock_count - ?) <= 0 THEN false ELSE is_available END,
              updated_at = NOW()
          WHERE branch_id = ? AND product_id = ?`,
         [item.quantity, item.quantity, branchId, item.id]

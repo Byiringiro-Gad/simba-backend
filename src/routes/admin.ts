@@ -85,7 +85,7 @@ router.get('/stats', adminAuth, async (_req: Request, res: Response) => {
         SUM(CASE WHEN status = 'delivered'  THEN 1 ELSE 0 END) AS delivered,
         SUM(CASE WHEN status = 'cancelled'  THEN 1 ELSE 0 END) AS cancelled,
         SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) AS revenue,
-        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS today
+        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) AS today
       FROM orders
     `);
 

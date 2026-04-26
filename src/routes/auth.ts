@@ -17,15 +17,13 @@ function buildResetLink(token: string) {
 async function ensureResetSchema() {
   await query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
-      id          INT AUTO_INCREMENT PRIMARY KEY,
-      user_id     VARCHAR(36)  NOT NULL,
-      token       VARCHAR(255) NOT NULL UNIQUE,
-      expires_at  DATETIME     NOT NULL,
-      used_at     DATETIME     DEFAULT NULL,
-      created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_password_reset_user_id (user_id),
-      INDEX idx_password_reset_token (token)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      id         SERIAL       PRIMARY KEY,
+      user_id    VARCHAR(36)  NOT NULL,
+      token      VARCHAR(255) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ  NOT NULL,
+      used_at    TIMESTAMPTZ  DEFAULT NULL,
+      created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
   `);
 }
 

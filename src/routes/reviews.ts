@@ -20,9 +20,9 @@ router.post('/', async (req: Request, res: Response) => {
     await query(
       `INSERT INTO branch_reviews (branch_id, branch_name, user_id, user_name, order_id, rating, comment)
        VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         rating = VALUES(rating),
-         comment = VALUES(comment)`,
+       ON CONFLICT (order_id) DO UPDATE SET
+         rating = EXCLUDED.rating,
+         comment = EXCLUDED.comment`,
       [
         branchId,
         branchName ?? branchId,
